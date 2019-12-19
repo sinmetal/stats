@@ -65,12 +65,13 @@ const (
 	OCReportInterval = 60 * time.Second
 
 	// Measure namess for respecitive OpenCensus Measure
-	LogSize     = "logsize"
-	RedisStatus = "redis-status"
+	LogSize       = "logsize"
+	RedisStatus   = "redis-status"
+	SpannerStatus = "spanner-status"
 
 	// Units are used to define Measures of OpenCensus.
 	ByteSizeUnit = "byte"
-	StatusUnit   = "count"
+	CountUnit    = "count"
 
 	// ResouceNamespace is used for the exporter to have resource labels.
 	ResourceNamespace = "sinmetal"
@@ -78,14 +79,23 @@ const (
 
 var (
 	// Measure variables
-	MLogSize     = stats.Int64(LogSize, "logSize", ByteSizeUnit)
-	MStatusCount = stats.Int64(RedisStatus, "redis status", StatusUnit)
+	MLogSize            = stats.Int64(LogSize, "logSize", ByteSizeUnit)
+	MRedisStatusCount   = stats.Int64(RedisStatus, "redis status", CountUnit)
+	MSpannerStatusCount = stats.Int64(SpannerStatus, "spanner status", CountUnit)
 
 	RedisStatusCountView = &view.View{
 		Name:        RedisStatus,
-		Description: "status count",
+		Description: "redis status count",
 		TagKeys:     []tag.Key{KeySource},
-		Measure:     MStatusCount,
+		Measure:     MRedisStatusCount,
+		Aggregation: view.Count(),
+	}
+
+	SpannerStatusCountView = &view.View{
+		Name:        SpannerStatus,
+		Description: "spanner status count",
+		TagKeys:     []tag.Key{KeySource},
+		Measure:     MSpannerStatusCount,
 		Aggregation: view.Count(),
 	}
 
@@ -103,25 +113,29 @@ var (
 
 	StatusViews = []*view.View{
 		RedisStatusCountView,
+		SpannerStatusCountView,
 	}
 
 	// KeySource is the key for label in "generic_node",
 	KeySource, _ = tag.NewKey("source")
 )
 
-func InitOpenCensusStats(exporter *stackdriver.Exporter) {
+func InitOpenCensusStats(exporter *stackdriver.Exporter) error {
 	view.SetReportingPeriod(5 * time.Minute)
 	view.RegisterExporter(exporter)
-	view.Register(LogSizeViews...)
-	if err := view.Register(StatusViews...); err != nil {
-		log.Fatal(err)
+	if err := view.Register(LogSizeViews...); err != nil {
+		return err
 	}
+	if err := view.Register(StatusViews...); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func RecordMeasurement(id string, logSize int64) error {
 	ctx, err := tag.New(context.Background(), tag.Upsert(KeySource, id))
 	if err != nil {
-		log.Fatalf("failed to insert key: %v", err)
 		return err
 	}
 
@@ -134,11 +148,21 @@ func RecordMeasurement(id string, logSize int64) error {
 func CountRedisStatus(ctx context.Context, id string) error {
 	ctx, err := tag.New(ctx, tag.Upsert(KeySource, id))
 	if err != nil {
-		log.Fatalf("failed to insert key: %v", err)
 		return err
 	}
 
 	stats.Record(ctx,
-		MStatusCount.M(1))
+		MRedisStatusCount.M(1))
+	return nil
+}
+
+func CountSpannerStatus(ctx context.Context, id string) error {
+	ctx, err := tag.New(ctx, tag.Upsert(KeySource, id))
+	if err != nil {
+		return err
+	}
+
+	stats.Record(ctx,
+		MSpannerStatusCount.M(1))
 	return nil
 }
