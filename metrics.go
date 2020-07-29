@@ -39,11 +39,8 @@ func GetMetricType(v *view.View) string {
 	return fmt.Sprintf("custom.googleapis.com/%s", v.Name)
 }
 
-func InitExporter(project string) *stackdriver.Exporter {
-	location := "asia-northeast1-b" // TODO 適当に入れてる
-
-	mr := NewGenericNodeMonitoredResource(location, "default", "public-data")
-	labels := &stackdriver.Labels{}
+func InitExporter(project string, location string, namespace string, node string, labels *stackdriver.Labels) *stackdriver.Exporter {
+	mr := NewGenericNodeMonitoredResource(location, namespace, node)
 	exporter, err := stackdriver.NewExporter(stackdriver.Options{
 		ProjectID:               project,
 		Location:                location,
